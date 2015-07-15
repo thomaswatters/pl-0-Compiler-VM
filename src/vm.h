@@ -1,13 +1,23 @@
-//
-// Created by Thomas on 7/11/2015.
-//
+
+#include <stdbool.h>
+
 
 #ifndef MODULE3_VM_H
 #define MODULE3_VM_H
 
-#define MAX_STACK_HEIGHT 2000
-#define MAX_CODE_LENGTH 500
-#define MAX_LEXI_LEVELS 30
+#define DEFAULT_MAX_STACK_HEIGHT 2000
+#define DEFAULT_MAX_CODE_LENGTH 500
+#define DEFAULT_MAX_LEXI_LEVELS 30
+
+typedef struct
+{
+    unsigned max_stack_height;
+    unsigned max_code_length;
+    unsigned max_lexi_levels;
+    bool output_stacktrace_to_file;
+    bool output_detailed_instructions_to_file;
+
+}VM_SETTINGS;
 
 
 
@@ -35,16 +45,6 @@ struct instruction
 }typedef instruction;
 
 
-
-void readInstructionFile(char* fileName);
-void runProgram(char* fileName);
-void printInstructions(char* fileName);
-void fetch();
-int execute();
-void GetOPR();
-int GetSIO();
-int base(int level, int b);
-
-
+void startVM(char* assembly_file, const VM_SETTINGS* settings);
 
 #endif //MODULE3_VM_H

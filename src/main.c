@@ -176,28 +176,34 @@ int main(int argc, char** argv)
     fprintf(stdout, "Program Running\n");
     fprintf(stdout, "Console:\n");
 
+    VM_SETTINGS vm_settings =
+            {
+                    .max_stack_height = 1000,
+                    .output_detailed_instructions_to_file = true,
+                    .output_stacktrace_to_file = true,
+                    .max_code_length = 1000,
+                    .max_lexi_levels = 30
+            };
 
-    readInstructionFile("mcode.txt");
-    printInstructions("stacktrace.txt");
-    runProgram("stacktrace.txt");
+    startVM("mcode.txt", &vm_settings);
 
     fprintf(stdout, "Program finished successfully\n\n");
 
 
-
-    if(option_show_lexeme)
-        printLexeme(stdout);
-    if(option_show_assembly)
-        printAssembly(stdout);
-    if(option_show_stacktrace)
-        printStackTrace(stdout);
-
-    FILE* output = openFile("output.txt", "w");
-    printInputFile(source_code_file, output);
-    fprintf(output, "\n\nProgram is syntactically correct\n\n");
-    printAssembly(output);
-    printStackTrace(output);
-    closeFile(output);
+//
+//    if(option_show_lexeme)
+//        printLexeme(stdout);
+//    if(option_show_assembly)
+//        printAssembly(stdout);
+//    if(option_show_stacktrace)
+//        printStackTrace(stdout);
+//
+//    FILE* output = openFile("output.txt", "w");
+//    printInputFile(source_code_file, output);
+//    fprintf(output, "\n\nProgram is syntactically correct\n\n");
+//    printAssembly(output);
+//    printStackTrace(output);
+//    closeFile(output);
 
 
 

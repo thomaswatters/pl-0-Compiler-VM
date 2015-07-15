@@ -1,10 +1,22 @@
-//
-// Created by Thomas on 7/11/2015.
-//
-#include "vm.h"
-
-#include <stdio.h>
 #include <stdlib.h>
+
+#include "vm.h"
+#include "errors.h"
+
+
+//prototypes
+void stopVM();
+void internal_error(int num);
+void loadInstructions(char* assembly_code);
+void executeVM();
+void printInstructions(char* fileName);
+void fetch();
+int execute();
+void opr();
+int sio();
+int base(int level, int b);
+
+
 
 //Registers
 unsigned sp = 0;
@@ -13,92 +25,191 @@ unsigned pc = 0;
 instruction ir;
 
 //memory stack
-int stack[MAX_STACK_HEIGHT];
+int* stack;
 
 //additional data to manage viewing of AR
-int ar_breaks[MAX_LEXI_LEVELS];
+int* ar_breaks;
 int levels = 0;
 
 //instruction store
-instruction code[MAX_CODE_LENGTH];
+instruction* code;
 int instruction_count = 0;
+
+
+
+//Updated variables
+VM_SETTINGS default_settings = (VM_SETTINGS)
+        {
+                .max_code_length = DEFAULT_MAX_CODE_LENGTH,
+                .max_lexi_levels = DEFAULT_MAX_LEXI_LEVELS,
+                .max_stack_height = DEFAULT_MAX_STACK_HEIGHT,
+                .output_stacktrace_to_file = false,
+                .output_detailed_instructions_to_file = false
+        };
+
+VM_SETTINGS vm_settings;
 
 
 //Display stuff
 char* OpStrings[] = {"", "lit", "opr", "lod", "sto", "cal", "inc", "jmp", "jpc", "sio"};
 
 
-void readInstructionFile(char* fileName)
+char* outputfile = "stacktrace.out";
+
+
+void startVM(char* assembly_code, const VM_SETTINGS* settings)
 {
-    FILE* in = fopen(fileName, "r");
-    instruction_count = 0;
-    if(in == NULL)
+    if(assembly_code == NULL)
+        internal_error(0);
+
+    if(settings == NULL)
+        settings = &default_settings;
+
+    vm_settings = *settings;
+
+    code = (instruction*)malloc(sizeof(instruction)*vm_settings.max_code_length);
+    if(code == NULL)
+        internal_error(0);
+
+    stack = (int*)malloc(sizeof(int)*vm_settings.max_stack_height);
+    if(stack == NULL)
+        internal_error(0);
+
+    ar_breaks = (int*)malloc(sizeof(int)*vm_settings.max_lexi_levels);
+
+    loadInstructions(assembly_code);
+
+    if(vm_settings.output_detailed_instructions_to_file)
     {
-        fprintf(stderr, "%s %s\n", "Unable to open file: ", fileName );
-        exit(-1);
+        printInstructions(outputfile);
     }
 
-    while(instruction_count < MAX_CODE_LENGTH)
-    {
-        if(fscanf(in, "%d %d %d", &code[instruction_count].OP, &code[instruction_count].L, &code[instruction_count].M) != 3)
-            break;
+    executeVM();
+    stopVM();
 
-        instruction_count++;
-    }
-
-    fclose(in);
 }
 
 
-void runProgram(char* fileName)
+void stopVM()
+{
+    if(code != NULL)
+        free(code);
+
+    if(stack != NULL)
+        free(stack);
+
+    if(ar_breaks != NULL)
+        free(ar_breaks);
+
+}
+
+
+void internal_error(int num)
+{
+    stopVM();
+    error(num);
+
+}
+
+
+void executeVM()
 {
 
-    FILE* out = fopen(fileName, "a");
-   // FILE* out = stdout;
-    fprintf(out, "\n\n\n%30s%7s%7s%10s\n", "pc", "bp", "sp", "stack");
-    fprintf(out, "%-28s%-7d%-7d%-7d\n","Initial Values", pc, bp, sp);
+    FILE* out = NULL;
+    if(vm_settings.output_stacktrace_to_file)
+    {
+        out = fopen(outputfile, "a");
+        if(out == NULL)
+            internal_error(0);
 
-    int running = 1;
+        fprintf(out, "\n\n\n%30s%7s%7s%10s\n", "pc", "bp", "sp", "stack");
+        fprintf(out, "%-28s%-7d%-7d%-7d\n","Initial Values", pc, bp, sp);
+    }
+
+
+    bool running = true;
     int temp_sp = 0;
     while(running)
     {
         fetch();
 
-        fprintf(out, "%-7d%-7s%-7d%-7d", pc - 1, OpStrings[ir.OP], ir.L, ir.M);
+        running = execute() == 0 ? true : false;
 
-
-        if(execute() != 0)
-            running = 0;
-
-        fprintf(out,"%-7d%-7d%-7d", pc, bp, sp);
-        temp_sp = 1;
-        int temp_lvl = 0;
-        while(temp_sp <=  sp)
+        if(vm_settings.output_stacktrace_to_file)
         {
-            fprintf(out, "%d ", stack[temp_sp]);
+            fprintf(out, "%-7d%-7s%-7d%-7d", pc - 1, OpStrings[ir.OP], ir.L, ir.M);
 
-            if(temp_lvl < MAX_LEXI_LEVELS && ar_breaks[temp_lvl] == temp_sp && temp_sp != sp )
+            fprintf(out, "%-7d%-7d%-7d", pc, bp, sp);
+            temp_sp = 1;
+            int temp_lvl = 0;
+            while (temp_sp <= sp)
             {
-                fprintf(out, "| ");
-                temp_lvl++;
+                fprintf(out, "%d ", stack[temp_sp]);
+
+                if (temp_lvl < vm_settings.max_lexi_levels &&
+                        ar_breaks[temp_lvl] == temp_sp &&
+                        temp_sp != sp)
+                {
+                    fprintf(out, "| ");
+                    temp_lvl++;
+                }
+
+                temp_sp++;
             }
 
-            temp_sp++;
+            fprintf(out, "\n");
         }
-
-        fprintf(out,"\n");
 
     }
 
-    fclose(out);
+    if(out != NULL) fclose(out);
+
 }
 
+
+/*
+ * Loads pm/0 instructions from a file named assembly_code
+ * into code_head array
+ *
+ * Throws an error if the file is not able to be opened
+ *
+ */
+void loadInstructions(char* assembly_code)
+{
+
+    FILE* in_file = fopen(assembly_code, "r");
+    if(in_file == NULL)
+    {
+        fprintf(stderr, "Unable to access file: %s\n", assembly_code);
+        internal_error(0);
+    }
+
+    instruction_count = 0;
+    while(fscanf(in_file, "%d %d %d",
+                 &code[instruction_count].OP,
+                 &code[instruction_count].L,
+                 &code[instruction_count].M) == 3)
+    {
+        instruction_count++;
+        if(instruction_count >= vm_settings.max_code_length)
+        {
+            fclose(in_file);
+            internal_error(0);
+        }
+
+    }
+
+    fclose(in_file);
+
+}
 
 
 void printInstructions(char* fileName)
 {
 
     FILE* out = fopen(fileName, "w");
+    if(out == NULL)
+        internal_error(0);
 
     int i = 0;
     fprintf(out, "%-7s%-7s%-7s%-7s\n", "Line", "OP", "L", "M");
@@ -108,6 +219,7 @@ void printInstructions(char* fileName)
     }
 
     fclose(out);
+
 }
 
 
@@ -122,22 +234,33 @@ int execute()
 {
     switch(ir.OP)
     {
-        case 1:    // LIT
+        case LIT:    // LIT
             sp = sp + 1;
+            if(sp >= vm_settings.max_stack_height)
+                internal_error(0);
+
             stack[sp] = ir.M;
             break;
-        case 2:    //OPR
-            GetOPR();
+        case OPR:    //OPR
+            opr();
             break;
-        case 3:    //LOD
+        case LOD:    //LOD
             sp = sp + 1;
+
+            if(sp >= vm_settings.max_stack_height)
+                internal_error(0);
+
             stack[sp] = stack[ base(ir.L, bp) + ir.M];
             break;
-        case 4:    //STO
+        case STO:    //STO
             stack[ base(ir.L, bp) + ir.M] = stack[sp];
             sp = sp - 1;
             break;
-        case 5:    //CAL
+        case CAL:    //CAL
+
+            if(sp + 4 >= vm_settings.max_stack_height)
+                internal_error(0);
+
             stack[sp + 1] = 0; // return value (FV)
             stack[sp + 2] = base(ir.L, bp); // static link (SL)
             stack[sp + 3] = bp; // dynamic link (DL)
@@ -146,20 +269,24 @@ int execute()
             pc = ir.M;
             ar_breaks[levels++] = bp - 1;
             break;
-        case 6:    //INC
+        case INC:    //INC
             sp = sp + ir.M;
+
+            if(sp + 4 >= vm_settings.max_stack_height)
+                internal_error(0);
+
             break;
-        case 7:    //JMP
+        case JMP:    //JMP
             pc = ir.M;
             break;
-        case 8:
+        case JPC:
             if( stack[sp] == 0 )  pc = ir.M;
             sp = sp - 1;
             break;
-        case 9:
-            return GetSIO();
+        case SIO:
+            return sio();
         default:
-            return 1;
+            internal_error(0);
 
     }
 
@@ -167,7 +294,7 @@ int execute()
 
 }
 
-void GetOPR()
+void opr()
 {
     switch(ir.M)
     {
@@ -229,31 +356,32 @@ void GetOPR()
             stack[sp] = stack[sp] >= stack[sp + 1];
             break;
         default:
-            exit(-1);
+            internal_error(0);
 
     }
 }
 
-int GetSIO()
+int sio()
 {
     switch(ir.M)
     {
-        case 0:
+        case SIO_PRINT:
             fprintf(stdout, "SIO_PRINT: %d\n", stack[sp]);
             fflush(stdout);
             sp = sp - 1;
             break;
-        case 1:
+        case SIO_READ:
             sp = sp + 1;
             fprintf(stdout, "SIO_READ: ");
             fflush(stdout);
-            fscanf(stdin, "%d", &stack[sp]);
+
             fflush(stdin);
+            fscanf(stdin, "%d", &stack[sp]);
             break;
-        case 2:
+        case SIO_HALT:
             return 1;
         default:
-            return 1;
+            internal_error(0);
     }
 
     return 0;
@@ -266,7 +394,6 @@ int base(int level, int b)
         b = stack[b + 1];
         level--;
     }
-
     return b;
 
 }

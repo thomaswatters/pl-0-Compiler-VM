@@ -93,6 +93,7 @@ void lexicalParser(char *in_file_name)
             else if (strcmp("read", tok.lexeme) == 0) tok.type = readsym;
             else if (strcmp("write", tok.lexeme) == 0) tok.type = writesym;
             else if (strcmp("odd", tok.lexeme) == 0) tok.type = oddsym;
+            else if (strcmp("return", tok.lexeme) == 0) tok.type = returnsym;
 
 
         }
