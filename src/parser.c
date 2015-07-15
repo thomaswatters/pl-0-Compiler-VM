@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "vm.h"
 #include "errors.h"
+#include "scanner.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -103,7 +104,6 @@ void program()
 void block()
 {
     int prev_mod = mod;
-    level++;
     mod = 4;
     if(current_token.type == constsym)  const_decl();
     if(current_token.type == varsym) var_decl();
@@ -113,7 +113,6 @@ void block()
     emit(INC, 0,mod);
 
     statement();
-    level--;
     mod = prev_mod;
 
 }
@@ -143,6 +142,7 @@ void const_decl()
         enter(constant, identifier, value);
 
         getToken();
+
 
     }while (current_token.type == commasym);
     if(current_token.type != semicolonsym)
@@ -196,12 +196,24 @@ void proc_decl()
         error(17);
 
     getToken();
+    level++;
     block();
+
+    if(current_token.type == returnsym)
+    {
+        getToken();
+        expression();
+
+        emit(STO,0,0);
+    }
+
+
+    level--;
+
     if(current_token.type != semicolonsym)
         error(17);
 
     getToken();
-
     if(current_token.type == procsym)
         proc_decl();
 
@@ -213,7 +225,31 @@ void proc_decl()
 
 }
 
+void assignment()
+{
+    if(current_token.type == callsym)
+    {
+        getToken();
+        if(current_token.type != identsym)
+            error(14);
 
+        symbol* sym = findSymbolByLevel(strtok(NULL, " ")); // get procedure symbol
+        if(sym == NULL)
+            error(11);
+        if(sym->kind != procedure)
+            error(15);
+
+
+        emit(CAL, level - sym->level, sym->addr);
+
+        emit(INC, 0, 1);
+        getToken();
+    }
+    else
+    {
+        expression();
+    }
+}
 
 void statement()
 {
@@ -233,9 +269,8 @@ void statement()
         if(sym->kind != variable)
             error(12);
 
+        assignment();
 
-
-        expression();
         emit(STO, level - sym->level, sym->addr);
     }
     else if( current_token.type == callsym)
@@ -254,6 +289,7 @@ void statement()
         emit(CAL, level - sym->level, sym->addr);
 
         getToken();
+
 
     }
     else if( current_token.type == beginsym )

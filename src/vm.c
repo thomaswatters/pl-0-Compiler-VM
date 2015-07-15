@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 
 #include "vm.h"
 #include "errors.h"
@@ -67,15 +68,16 @@ void startVM(char* assembly_code, const VM_SETTINGS* settings)
 
     vm_settings = *settings;
 
-    code = (instruction*)malloc(sizeof(instruction)*vm_settings.max_code_length);
+    code = (instruction*)calloc(vm_settings.max_code_length,sizeof(instruction));
     if(code == NULL)
         internal_error(0);
 
-    stack = (int*)malloc(sizeof(int)*vm_settings.max_stack_height);
+
+    stack = (int*)calloc(vm_settings.max_stack_height,sizeof(int));
     if(stack == NULL)
         internal_error(0);
 
-    ar_breaks = (int*)malloc(sizeof(int)*vm_settings.max_lexi_levels);
+    ar_breaks = (int*)calloc(vm_settings.max_lexi_levels,sizeof(int));
 
     loadInstructions(assembly_code);
 
