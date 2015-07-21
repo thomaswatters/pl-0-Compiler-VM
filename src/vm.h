@@ -1,6 +1,4 @@
-
 #include <stdbool.h>
-
 
 #ifndef MODULE3_VM_H
 #define MODULE3_VM_H
@@ -24,7 +22,7 @@ typedef struct
 typedef enum
 {
     LIT=1, OPR, LOD, STO,
-    CAL, INC, JMP, JPC, SIO
+    CAL, INC, JMP, JPC, SIO, MST
 }OP_CODE;
 
 typedef enum

@@ -5,8 +5,6 @@
 #include "parser.h"
 #include "vm.h"
 #include "errors.h"
-#include "scanner.h"
-
 #include <string.h>
 #include <stdlib.h>
 
@@ -25,7 +23,7 @@ PARSER parse(const char* token_string)
     parser_struct.token_string = malloc(sizeof(char)*(strlen(token_string) + 1));
     strcpy(parser_struct.token_string, token_string);
     parser_struct.symbols_stored = 0;
-    level = -1;
+    level = 0;
     mod=0;
     cx = 0;
     program();
@@ -78,8 +76,9 @@ symbol* enter(symbol_type type, char* ident, int val)
     strcpy(entry->name, ident);
     entry->level = level;
     entry->val = val;
-    if(type == procedure)
+    if(type == procedure) {
         entry->addr = cx;
+    }
     else if( type == variable)
         entry->addr = mod++;
 
@@ -92,6 +91,7 @@ symbol* enter(symbol_type type, char* ident, int val)
 void program()
 {
     getToken();
+    emit(INC, 0 ,4);
     block();
     if(current_token.type != periodsym)
         error(9);
@@ -101,19 +101,26 @@ void program()
 
 
 }
+
 void block()
 {
-    int prev_mod = mod;
     mod = 4;
+    int params = 0;
+    int procedures = 0;
     if(current_token.type == constsym)  const_decl();
+    if(current_token.type == paramsym) params = param_decl();
     if(current_token.type == varsym) var_decl();
-    if(current_token.type == procsym) proc_decl();
+    if(current_token.type == procsym) proc_decl(&procedures);
 
 
-    emit(INC, 0,mod);
+    mod -= 4;
+    emit(INC, 0,mod - params);
 
     statement();
-    mod = prev_mod;
+
+    parser_struct.symbols_stored -= procedures;
+
+
 
 }
 
@@ -152,7 +159,7 @@ void const_decl()
     getToken();
 }
 
-void var_decl()
+int param_decl()
 {
     char* identifier;
     int count = 0;
@@ -166,6 +173,31 @@ void var_decl()
 
         enter(variable, identifier, 0);
         count++;
+
+        getToken();
+
+
+    }while (current_token.type == commasym);
+    if(current_token.type != semicolonsym)
+        error(5);
+
+    getToken();
+
+    return count;
+}
+
+void var_decl()
+{
+    char* identifier;
+    do
+    {
+        getToken();
+        if(current_token.type != identsym)
+            error(4);
+
+        identifier = strtok(NULL, " ");
+
+        enter(variable, identifier, 0);
         getToken();
 
     }while (current_token.type == commasym);
@@ -177,8 +209,10 @@ void var_decl()
 }
 
 
-void proc_decl()
+void proc_decl(int* count)
 {
+    (*count)++;
+
     char* identifier;
 
     int tempc = cx;
@@ -197,7 +231,11 @@ void proc_decl()
 
     getToken();
     level++;
+
+
+    int prev_mod = mod;
     block();
+
 
     if(current_token.type == returnsym)
     {
@@ -210,12 +248,16 @@ void proc_decl()
 
     level--;
 
+
+    parser_struct.symbols_stored -= mod;
+    mod = prev_mod;
+
     if(current_token.type != semicolonsym)
         error(17);
 
     getToken();
     if(current_token.type == procsym)
-        proc_decl();
+        proc_decl(count);
 
 
     emit(OPR, 0, 0);
@@ -223,32 +265,7 @@ void proc_decl()
 
 
 
-}
 
-void assignment()
-{
-    if(current_token.type == callsym)
-    {
-        getToken();
-        if(current_token.type != identsym)
-            error(14);
-
-        symbol* sym = findSymbolByLevel(strtok(NULL, " ")); // get procedure symbol
-        if(sym == NULL)
-            error(11);
-        if(sym->kind != procedure)
-            error(15);
-
-
-        emit(CAL, level - sym->level, sym->addr);
-
-        emit(INC, 0, 1);
-        getToken();
-    }
-    else
-    {
-        expression();
-    }
 }
 
 void statement()
@@ -269,26 +286,28 @@ void statement()
         if(sym->kind != variable)
             error(12);
 
-        assignment();
+        expression();
 
         emit(STO, level - sym->level, sym->addr);
     }
     else if( current_token.type == callsym)
     {
         getToken();
-        if(current_token.type != identsym)
-            error(14);
-
-        symbol* sym = findSymbolByLevel(strtok(NULL, " ")); // get procedure symbol
-        if(sym == NULL)
-            error(11);
-        if(sym->kind != procedure)
-            error(15);
-
-
-        emit(CAL, level - sym->level, sym->addr);
-
-        getToken();
+        proccall();
+//        getToken();
+//        if(current_token.type != identsym)
+//            error(14);
+//
+//        symbol* sym = findSymbolByLevel(strtok(NULL, " ")); // get procedure symbol
+//        if(sym == NULL)
+//            error(11);
+//        if(sym->kind != procedure)
+//            error(15);
+//
+//
+//        emit(CAL, level - sym->level, sym->addr);
+//
+//        getToken();
 
 
     }
@@ -332,10 +351,6 @@ void statement()
         }
 
     }
-    else if(current_token.type == elsesym)
-    {
-
-    }
 
     else if(current_token.type == whilesym)
     {
@@ -375,30 +390,52 @@ void statement()
     else if( current_token.type == writesym)
     {
         getToken();
-        if(current_token.type != identsym)
-            error(0);
-
-        char* ident = strtok(NULL, " ");
-
-        symbol* sym= findSymbolByLevel(ident);
-        if(sym == NULL)
-            error(11);
-
-        if(sym->kind == variable)
-            emit(LOD, level - sym->level, sym->addr);
-        else if(sym->kind == constant)
-            emit(LIT, 0, sym->val);
-        else
-            error(0);
-
+        expression();
         emit(SIO, 0, SIO_PRINT);
-        //TODO: implement write to output
-
-        getToken();
     }
 
 }
 
+
+void proccall()
+{
+    if( current_token.type != identsym )
+        error(0);
+
+    char* ident = strtok(NULL, " ");
+
+    symbol* sym= findSymbolByLevel(ident);
+    if(sym == NULL)
+        error(11);
+
+    if(sym->kind != procedure)
+        error(0);
+
+    emit(MST, level - sym->level, 0);
+
+    getToken();
+    if(current_token.type == lparentsym)
+    {
+        getToken();
+        if(current_token.type != rparentsym)
+        {
+            expression();
+            while(current_token.type == commasym)
+            {
+                getToken();
+                expression();
+            }
+
+            if(current_token.type != rparentsym)
+                error(0);
+
+        }
+
+        getToken();
+    }
+
+    emit(CAL, sym->level, sym->addr);
+}
 
 void expression()
 {
@@ -540,16 +577,23 @@ void factor()
         getToken();
         emit(LIT, 0, number);
     }
-    else if( current_token.type == lparentsym)
-    {
+    else if( current_token.type == lparentsym) {
         getToken();
         expression();
-        if(current_token.type != rparentsym)
+        if (current_token.type != rparentsym)
             error(22);
 
         getToken();
 
     }
+    else if( current_token.type == callsym)
+    {
+        getToken();
+        proccall();
+
+        emit(INC, 0, 1);
+    }
+
     else
     {
         error(23);
@@ -562,20 +606,12 @@ symbol* findSymbolByLevel(char* ident)
 {
     int i = 0;
     symbol* res = NULL;
-    symbol* temp;
-    for(i = 0; i < parser_struct.symbols_stored; i++ )
+    for(i = parser_struct.symbols_stored - 1; i >= 0; i-- )
     {
         if(strcmp(ident, parser_struct.symbol_table[i].name) == 0)
         {
-            temp = &parser_struct.symbol_table[i];
-            if(temp->level <= level) {
-                if (res == NULL)
-                    res = temp;
-                else if (res->level < temp->level) {
-                    res = temp;
-                }
-
-            }
+            res = &parser_struct.symbol_table[i];
+            break;
         }
 
     }

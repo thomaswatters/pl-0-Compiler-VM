@@ -39,7 +39,7 @@ void block();
 void getToken();
 void const_decl();
 void var_decl();
-void proc_decl();
+void proc_decl(int* num);
 void statement();
 void expression();
 void condition();
@@ -48,4 +48,7 @@ void factor();
 symbol* enter(symbol_type type, char* ident, int val);
 void emit(unsigned op, unsigned l, unsigned m);
 symbol* findSymbolByLevel(char* ident);
+
+int param_decl();
+void proccall();;
 #endif //MODULE3_PARSER_H

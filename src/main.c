@@ -182,7 +182,7 @@ int main(int argc, char** argv)
                     .output_detailed_instructions_to_file = true,
                     .output_stacktrace_to_file = true,
                     .max_code_length = 1000,
-                    .max_lexi_levels = 30
+                    .max_lexi_levels = 200
             };
 
     startVM("mcode.txt", &vm_settings);

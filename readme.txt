@@ -1,13 +1,14 @@
+// TEAM
+
+// Names: Darian Smalley
+//        Thomas Watters
+
+
 To compile program:
 
     1.  Navigate to root folder of project (the folder containing this readme)
     2.  Run make (type make into console press enter)
     3.  This will generate a program called "compile" within this directory
-
-// TEAM
-
-// Names: Darian Smalley
-//        Thomas Watters
 
 Required files:
 	input.txt	- source code file

@@ -12,10 +12,6 @@
 
 
 //Prototypes
-int cleanFile(char *in_file_name);
-void stripExtraSpaces(char *str);
-int removeComments(char *str);
-int getLine(char *buffer, char *seek);
 void lexicalParser(char *in_file_name);
 
 
@@ -26,7 +22,7 @@ typedef enum {
     gtrsym, geqsym, lparentsym, rparentsym, commasym, semicolonsym,
     periodsym, becomessym, beginsym, endsym, ifsym, thensym,
     whilesym, dosym, callsym, constsym, varsym, procsym, writesym,
-    readsym, elsesym, returnsym
+    readsym, elsesym, returnsym, paramsym
 } token_type;
 
 struct {

@@ -8,6 +8,15 @@
 
 char *clean_input_name = "cleaninput.txt";
 
+//Prototypes
+
+int cleanFile(char *in_file_name);
+void stripExtraSpaces(char *str);
+int removeComments(char *str);
+int getLine(char *buffer, char *seek);
+
+
+
 
 /*
  * Parses the file having name in_file_name
@@ -94,6 +103,7 @@ void lexicalParser(char *in_file_name)
             else if (strcmp("write", tok.lexeme) == 0) tok.type = writesym;
             else if (strcmp("odd", tok.lexeme) == 0) tok.type = oddsym;
             else if (strcmp("return", tok.lexeme) == 0) tok.type = returnsym;
+            else if (strcmp("param", tok.lexeme) == 0) tok.type = paramsym;
 
 
         }

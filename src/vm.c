@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <string.h>
 
 #include "vm.h"
 #include "errors.h"
@@ -16,6 +15,7 @@ int execute();
 void opr();
 int sio();
 int base(int level, int b);
+void stacktraceToFile();
 
 
 
@@ -23,6 +23,7 @@ int base(int level, int b);
 unsigned sp = 0;
 unsigned bp = 1;
 unsigned pc = 0;
+unsigned mp = 1;
 instruction ir;
 
 //memory stack
@@ -36,9 +37,12 @@ int levels = 0;
 instruction* code;
 int instruction_count = 0;
 
+char file_buffer[4096];
+int file_buffer_length;
+
+FILE* out;
 
 
-//Updated variables
 VM_SETTINGS default_settings = (VM_SETTINGS)
         {
                 .max_code_length = DEFAULT_MAX_CODE_LENGTH,
@@ -52,9 +56,10 @@ VM_SETTINGS vm_settings;
 
 
 //Display stuff
-char* OpStrings[] = {"", "lit", "opr", "lod", "sto", "cal", "inc", "jmp", "jpc", "sio"};
+char* OpStrings[] = {"", "lit", "opr", "lod", "sto", "cal", "inc", "jmp", "jpc", "sio", "mst"};
 
 
+//Output file
 char* outputfile = "stacktrace.out";
 
 
@@ -103,6 +108,11 @@ void stopVM()
     if(ar_breaks != NULL)
         free(ar_breaks);
 
+    if(file_buffer_length != 0 && out != NULL) {
+        fprintf(out, "%s", file_buffer);
+        closeFile(out);
+    }
+
 }
 
 
@@ -114,13 +124,16 @@ void internal_error(int num)
 }
 
 
+/*
+ * Runs the code through the vm
+ */
 void executeVM()
 {
 
-    FILE* out = NULL;
+    out = NULL;
     if(vm_settings.output_stacktrace_to_file)
     {
-        out = fopen(outputfile, "a");
+        out = openFile(outputfile, "a");
         if(out == NULL)
             internal_error(0);
 
@@ -130,7 +143,6 @@ void executeVM()
 
 
     bool running = true;
-    int temp_sp = 0;
     while(running)
     {
         fetch();
@@ -138,35 +150,49 @@ void executeVM()
         running = execute() == 0 ? true : false;
 
         if(vm_settings.output_stacktrace_to_file)
-        {
-            fprintf(out, "%-7d%-7s%-7d%-7d", pc - 1, OpStrings[ir.OP], ir.L, ir.M);
-
-            fprintf(out, "%-7d%-7d%-7d", pc, bp, sp);
-            temp_sp = 1;
-            int temp_lvl = 0;
-            while (temp_sp <= sp)
-            {
-                fprintf(out, "%d ", stack[temp_sp]);
-
-                if (temp_lvl < vm_settings.max_lexi_levels &&
-                        ar_breaks[temp_lvl] == temp_sp &&
-                        temp_sp != sp)
-                {
-                    fprintf(out, "| ");
-                    temp_lvl++;
-                }
-
-                temp_sp++;
-            }
-
-            fprintf(out, "\n");
-        }
+            stacktraceToFile();
 
     }
 
-    if(out != NULL) fclose(out);
 
 }
+
+void stacktraceToFile()
+{
+
+    if(out == NULL)
+        internal_error(0);
+
+    file_buffer_length += sprintf(&file_buffer[file_buffer_length], "%-7d%-7s%-7d%-7d", pc - 1, OpStrings[ir.OP], ir.L, ir.M);
+
+    file_buffer_length += sprintf(&file_buffer[file_buffer_length], "%-7d%-7d%-7d", pc, bp, sp);
+    int temp_sp = 1;
+    int temp_lvl = 0;
+    while (temp_sp <= sp)
+    {
+        file_buffer_length += sprintf(&file_buffer[file_buffer_length], "%d ", stack[temp_sp]);
+
+        if (temp_lvl < vm_settings.max_lexi_levels &&
+            ar_breaks[temp_lvl] == temp_sp &&
+            temp_sp != sp)
+        {
+            file_buffer_length += sprintf(&file_buffer[file_buffer_length], "| ");
+            temp_lvl++;
+        }
+
+        temp_sp++;
+    }
+
+    file_buffer_length += sprintf(&file_buffer[file_buffer_length], "\n");
+
+    if(file_buffer_length >= 2048)
+    {
+        fprintf(out, "%s", file_buffer);
+        file_buffer_length = 0;
+    }
+
+}
+
 
 
 /*
@@ -179,7 +205,7 @@ void executeVM()
 void loadInstructions(char* assembly_code)
 {
 
-    FILE* in_file = fopen(assembly_code, "r");
+    FILE* in_file = openFile(assembly_code, "r");
     if(in_file == NULL)
     {
         fprintf(stderr, "Unable to access file: %s\n", assembly_code);
@@ -195,13 +221,13 @@ void loadInstructions(char* assembly_code)
         instruction_count++;
         if(instruction_count >= vm_settings.max_code_length)
         {
-            fclose(in_file);
+            closeFile(in_file);
             internal_error(0);
         }
 
     }
 
-    fclose(in_file);
+    closeFile(in_file);
 
 }
 
@@ -209,7 +235,7 @@ void loadInstructions(char* assembly_code)
 void printInstructions(char* fileName)
 {
 
-    FILE* out = fopen(fileName, "w");
+    FILE* out = openFile(fileName, "w");
     if(out == NULL)
         internal_error(0);
 
@@ -220,7 +246,7 @@ void printInstructions(char* fileName)
         fprintf(out, "%-7d%-7s%-7d%-7d\n", i, OpStrings[code[i].OP], code[i].L, code[i].M);
     }
 
-    fclose(out);
+    closeFile(out);
 
 }
 
@@ -258,22 +284,32 @@ int execute()
             stack[ base(ir.L, bp) + ir.M] = stack[sp];
             sp = sp - 1;
             break;
-        case CAL:    //CAL
-
+        case MST:
             if(sp + 4 >= vm_settings.max_stack_height)
                 internal_error(0);
 
             stack[sp + 1] = 0; // return value (FV)
             stack[sp + 2] = base(ir.L, bp); // static link (SL)
             stack[sp + 3] = bp; // dynamic link (DL)
-            stack[sp + 4] = pc; // return address (RA)
-            bp = sp + 1;
+
+            mp = sp + 1;
+            sp = sp + 4;
+
+            if(vm_settings.output_stacktrace_to_file)
+                ar_breaks[levels++] = mp - 1;
+
+
+            if(sp + 4 >= vm_settings.max_stack_height)
+                internal_error(0);
+
+            break;
+        case CAL:    //CAL
+            bp = mp;
+            stack[bp + 3] = pc; // return address (RA)
             pc = ir.M;
-            ar_breaks[levels++] = bp - 1;
             break;
         case INC:    //INC
             sp = sp + ir.M;
-
             if(sp + 4 >= vm_settings.max_stack_height)
                 internal_error(0);
 
@@ -287,6 +323,7 @@ int execute()
             break;
         case SIO:
             return sio();
+
         default:
             internal_error(0);
 
@@ -304,8 +341,10 @@ void opr()
             sp = bp - 1;
             pc = stack[sp + 4];
             bp = stack[sp + 3];
-            levels--;
-            ar_breaks[levels] = -1;
+            if(vm_settings.output_stacktrace_to_file) {
+                levels--;
+                ar_breaks[levels] = -1;
+            }
             break;
         case OPR_NEG: //NEG
             stack[sp] = -1 * stack[sp];
