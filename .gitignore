@@ -1,2 +1,10 @@
+.idea/
 bin/
 screenshots/
+stacktrace.out
+stacktrace.txt
+output.txt
+lexemelist.txt
+lexemetable.txt
+cleaninput.txt
+mcode.txt
